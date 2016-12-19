@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/Bubblesort.iml" filepath="$PROJECT_DIR$/Bubblesort.iml" />
+      <module fileurl="file://$PROJECT_DIR$/bubblesort/bubblesort.iml" filepath="$PROJECT_DIR$/bubblesort/bubblesort.iml" />
+      <module fileurl="file://$PROJECT_DIR$/graphs/graphs.iml" filepath="$PROJECT_DIR$/graphs/graphs.iml" />
+      <module fileurl="file://$PROJECT_DIR$/pascal/pascal.iml" filepath="$PROJECT_DIR$/pascal/pascal.iml" />
+      <module fileurl="file://$PROJECT_DIR$/project1-nlp/project1-nlp.iml" filepath="$PROJECT_DIR$/project1-nlp/project1-nlp.iml" />
+      <module fileurl="file://$PROJECT_DIR$/project2-nlp/project2-nlp.iml" filepath="$PROJECT_DIR$/project2-nlp/project2-nlp.iml" />
+      <module fileurl="file://$PROJECT_DIR$/sorter/sorter.iml" filepath="$PROJECT_DIR$/sorter/sorter.iml" />
+      <module fileurl="file://$PROJECT_DIR$/trie/trie.iml" filepath="$PROJECT_DIR$/trie/trie.iml" />
+      <module fileurl="file://$PROJECT_DIR$/expreval/untitled1.iml" filepath="$PROJECT_DIR$/expreval/untitled1.iml" />
+    </modules>
+  </component>
+</project>
