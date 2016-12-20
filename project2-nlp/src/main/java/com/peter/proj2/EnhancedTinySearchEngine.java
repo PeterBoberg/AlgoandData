@@ -17,6 +17,7 @@ public class EnhancedTinySearchEngine implements TinySearchEngineBase {
     private final String DIFFERENCE = "-";
 
     private OrderedHashTable hashTable = new OrderedHashTable();
+    private Cache cache = new Cache();
     private String infixString;
 
     @Override
@@ -42,18 +43,17 @@ public class EnhancedTinySearchEngine implements TinySearchEngineBase {
         int idxOfOrderedBy = findIdxOfOrderedby(words);
 
         if (idxOfOrderedBy == -1) {
+
             System.out.println("STANDARD SEARCH OK!");
-            List<Document> resultList = new ArrayList<>();
-            for (DocumentEntry entry : simpleQueryPrefix(words, false)) {
-                resultList.add(entry.getDocument());
-            }
-            return resultList;
+            List<DocumentEntry> queryResultList = simplePrefixQuery(words);
+            return convertToDocumentList(queryResultList);
 
         } else {
             if (isValidKeywordQuery(idxOfOrderedBy, words)) {
 
                 System.out.println("VALID KEYWORD SEARCH!");
-                return specialQueryPrefix(words);
+                List<DocumentEntry> queryResultList = keywordPrefixQuery(words);
+                return convertToDocumentList(queryResultList);
             }
         }
 
@@ -68,69 +68,34 @@ public class EnhancedTinySearchEngine implements TinySearchEngineBase {
 
     }
 
-
     // PRIVATE DOMAIN
     ////////////////////////////////////////////////////////////////////
 
-    // Assumes the orderby keyword has already been removed
-    private List<DocumentEntry> simpleQueryPrefix(String[] words, boolean relevance) {
 
-        Stack<List<DocumentEntry>> operandStack = new Stack<>();
-        Stack<String> infixStack = new Stack<>();
-
-        for (int i = words.length - 1; i >= 0; i--) {
-            if (isOperand(words[i])) {
-                operandStack.push(simpleQuery(words[i], relevance));
-                infixStack.push(words[i]);
-
-            } else {
-
-                String operandString1 = infixStack.pop();
-                String operandString2 = infixStack.pop();
-                String resultString = "( " + operandString1 + " " + words[i] + " " + operandString2 + " )";
-                infixStack.push(resultString);
-
-                List<DocumentEntry> list1 = operandStack.pop();
-                List<DocumentEntry> list2 = operandStack.pop();
-                List<DocumentEntry> result = applyOperation(list1, list2, words[i]);
-                operandStack.push(result);
-            }
-        }
-
-        infixString = infixStack.pop();
-        return operandStack.pop();
-    }
-
-    private List<Document> specialQueryPrefix(String[] words) {
+    private List<DocumentEntry> keywordPrefixQuery(String[] words) {
 
         String[] queryArray = new String[words.length - 3];
         for (int i = 0; i < queryArray.length; i++)
             queryArray[i] = words[i];
 
-        List<DocumentEntry> queryResultList = simpleQueryPrefix(queryArray, true);
-
+        List<DocumentEntry> queryResultList = simplePrefixQuery(queryArray);
 
         String command1 = words[words.length - 2].toUpperCase();
         String command2 = words[words.length - 1].toUpperCase();
 
-        List<Document> resultList = new ArrayList<>();
 
         switch (command1) {
 
             case "POPULARITY":
 
-                for (DocumentEntry entry : queryResultList)
-                    resultList.add(entry.getDocument());
-
                 switch (command2) {
                     case "ASC":
-                        Collections.sort(resultList, new PopularityComparator());
-                        return resultList;
+                        Collections.sort(queryResultList, new PopularityComparator());
+                        return queryResultList;
                     case "DESC":
-                        Collections.sort(resultList, new PopularityComparator().reversed());
-                        return resultList;
+                        Collections.sort(queryResultList, new PopularityComparator().reversed());
+                        return queryResultList;
                 }
-
 
             case "RELEVANCE":
 
@@ -143,24 +108,54 @@ public class EnhancedTinySearchEngine implements TinySearchEngineBase {
                         break;
                 }
 
-
-                for (DocumentEntry entry : queryResultList) {
-                    System.out.println(entry);
-                    resultList.add(entry.getDocument());
-                }
-
-                return resultList;
-
+                return queryResultList;
         }
 
         return null;
     }
 
-    private List<DocumentEntry> applyOperation(List<DocumentEntry> list1, List<DocumentEntry> list2, String operation) {
+    // Assumes the orderby keyword has already been removed
+    private List<DocumentEntry> simplePrefixQuery(String[] words) {
+
+        Stack<List<DocumentEntry>> operandStack = new Stack<>();
+        Stack<String> infixStack = new Stack<>();
+
+        for (int i = words.length - 1; i >= 0; i--) {
+            if (isOperand(words[i])) {
+                operandStack.push(fetchDocuments(words[i]));
+                infixStack.push(words[i]);
+
+            } else {
+
+                String operandString1 = infixStack.pop();
+                String operandString2 = infixStack.pop();
+                String resultString = "( " + operandString1 + " " + words[i] + " " + operandString2 + " )";
+                infixStack.push(resultString);
+
+                Operation operation = new Operation(operandString1, operandString2, words[i]);
+
+                List<DocumentEntry> list1 = operandStack.pop();
+                List<DocumentEntry> list2 = operandStack.pop();
+                List<DocumentEntry> result = applyOperation(list1, list2, words[i], operation);
+                operandStack.push(result);
+                cache.put(operation, result);
+            }
+        }
+
+        infixString = infixStack.pop();
+        return operandStack.pop();
+    }
+
+    private List<DocumentEntry> applyOperation(List<DocumentEntry> list1, List<DocumentEntry> list2, String operator, Operation operation) {
+
+        if (cache.hasResult(operation)){
+            System.out.println("Cash Hit " + operation);
+            return cache.get(operation);
+        }
 
         List<DocumentEntry> resultList = new ArrayList<>();
 
-        switch (operation) {
+        switch (operator) {
             case INTERSECTION:
                 for (DocumentEntry entry1 : list1) {
                     for (DocumentEntry entry2 : list2) {
@@ -207,30 +202,7 @@ public class EnhancedTinySearchEngine implements TinySearchEngineBase {
 
     }
 
-    private List<DocumentEntry> simpleQuery(String key, boolean relevance) {
-
-
-        if (relevance)
-            return simpleQueryWithRelevance(key);
-
-        List<WordAttribute> wordAttributes = hashTable.get(key);
-        List<DocumentEntry> resultList = new ArrayList<>();
-
-
-        for (WordAttribute wordAttribute : wordAttributes) {
-            boolean found = false;
-            for (DocumentEntry entry : resultList)
-                if (wordAttribute.getAttributes().document.equals(entry.getDocument()))
-                    found = true;
-
-            if (!found)
-                resultList.add(new DocumentEntry(wordAttribute.getAttributes().document));
-        }
-
-        return resultList;
-    }
-
-    private List<DocumentEntry> simpleQueryWithRelevance(String key) {
+    private List<DocumentEntry> fetchDocuments(String key) {
 
         List<DocumentEntry> resultList = new ArrayList<>();
         List<WordAttribute> queryResultList = hashTable.get(key);
@@ -253,6 +225,7 @@ public class EnhancedTinySearchEngine implements TinySearchEngineBase {
         return resultList;
     }
 
+
     private List<DocumentEntry> calculateRelevance(List<DocumentEntry> resultList) {
 
         for (DocumentEntry entry : resultList) {
@@ -270,12 +243,21 @@ public class EnhancedTinySearchEngine implements TinySearchEngineBase {
     }
 
     private DocumentEntry createSummedDocEntry(DocumentEntry entry1, DocumentEntry entry2) {
-        DocumentEntry intersectEntry = new DocumentEntry(entry1.getDocument());
+        DocumentEntry summedEntry = new DocumentEntry(entry1.getDocument());
         double totalRelevance = entry1.getRelevance() + entry2.getRelevance();
         int totalOccurances = entry1.getCount() + entry2.getCount();
-        intersectEntry.setRelevance(totalRelevance);
-        intersectEntry.setCount(totalOccurances);
-        return intersectEntry;
+        summedEntry.setRelevance(totalRelevance);
+        summedEntry.setCount(totalOccurances);
+        return summedEntry;
+    }
+
+    private List<Document> convertToDocumentList(List<DocumentEntry> queryResultList) {
+        List<Document> resultList = new ArrayList<>();
+        for (DocumentEntry entry : queryResultList) {
+            resultList.add(entry.getDocument());
+        }
+
+        return resultList;
     }
 
     private int findIdxOfOrderedby(String[] words) {
@@ -320,17 +302,17 @@ public class EnhancedTinySearchEngine implements TinySearchEngineBase {
         return !(token.equalsIgnoreCase(INTERSECTION) || token.equalsIgnoreCase(UNION) || token.equalsIgnoreCase(DIFFERENCE));
     }
 
+
 }
 
 
-class PopularityComparator implements Comparator<Document> {
-
+class PopularityComparator implements Comparator<DocumentEntry> {
 
     @Override
-    public int compare(Document o1, Document o2) {
-        if (o1.popularity > o2.popularity)
+    public int compare(DocumentEntry o1, DocumentEntry o2) {
+        if (o1.getDocument().popularity > o2.getDocument().popularity)
             return 1;
-        if (o1.popularity < o2.popularity)
+        if (o1.getDocument().popularity < o2.getDocument().popularity)
             return -1;
         return 0;
     }
@@ -338,7 +320,6 @@ class PopularityComparator implements Comparator<Document> {
 
 
 class RelevanceComparator implements Comparator<DocumentEntry> {
-
 
     @Override
     public int compare(DocumentEntry o1, DocumentEntry o2) {
